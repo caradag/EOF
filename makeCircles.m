@@ -1,17 +1,14 @@
-function results = makecircle_v4(cov_data, yr, wk, norm, workpath, plots, showFigures)
-%% v4 has a revised normalizing factor for the amplitude series and only 
-%  plots the pressure series belonging to the biggest component of the 
-%  eigenvector.
+function makeCircles(cov_data, norm, workpath, plots, showFigures, saveVariables)
 % Plotting the e/vectors with eigenvalues of the covariance matrix that 
 % satisfy the lambda test, then plotting the components of the eigenvector 
 % above thres as circles (red for positive and blue otherwise; circle size 
 % represents magnitude) on the relative position of sensors map. 
 % Inputs: 
-%    cov_data - string, name of the m.file containg the covariance 
-%           matrix and their corresponding sensor's ID.  
-%           Eg: '5days_int_unnorm_cov_data_2008_1.mat'
-%    yr -   scalar, the year of the cov_data.
-%    wk -   scalar, the week of the cov_data.
+%    cov_data - Covariance data.
+%           It can be an string with the name of the m.file containg the
+%           covariance matrix and their corresponding sensor's ID.  
+%              Eg: '5days_int_unnorm_cov_data_2008_1.mat'
+%           Or a structure with the data.
 %    norm - Boolean, user-specified. True for normalized data. 
 %           Default is false.
 %    workpath - path were figures will be saved to and were cov_data is stored
@@ -21,28 +18,52 @@ function results = makecircle_v4(cov_data, yr, wk, norm, workpath, plots, showFi
 %    showFigures - 'on' or 'off' set the visibility of the figures.
 %           this is if they will be displayed and saved or just saved to disk
 %           Default is 'on'
-%
-% Output: 
-%    results - string, irrelevant. See saved plots.
+%    saveVariables - Boolean to set weather the variables will be saved to
+%           a file. Default is false. Saved variables are:
+%           eigval -> Eigenvalues
+%           eigvec_mat -> Eigen vectors as columns of a matrix
+%           A_mat -> Amplitude serie for each sensors as columns of A_mat
+%           start_time -> Start of the time window
+%           end_time -> End of the time window
 %
 
+persistent data sensors northing easting
+
 % Setting user-specified inputs to default if not specified
-if nargin < 4 || isempty(norm);
+if nargin < 2 || isempty(norm);
     norm=false;
 end
 
-if nargin < 5 || isempty(workpath);
+if nargin < 3 || isempty(workpath);
     workpath=[pwd filesep];
-end
-
-if nargin < 6 || isempty(plots);
+end    
+if nargin < 4 || isempty(plots);
     plots={'eigenVectors','map'};
 end
-if nargin < 7 || ~any(strcmp(showFigures,{'on','off'}));
+if nargin < 5 || ~any(strcmp(showFigures,{'on','off'}));
     showFigures='on';
 end
+if nargin < 6 || isempty(saveVariables);
+    saveVariables=false;
+end
 
-persistent data sensors northing easting
+circlePlotsFolder='Circle_plots';
+eigenvectorsPlotsFolder='Eigenvector_plots';
+variablesPlotsFolder='Eigenvectors_&_Amplitude_data';
+% Making sure paths exist
+if ~exist(workpath,'dir')
+    mkdir(workpath);
+end
+if any(strcmp(plots),'map') && ~exist([workpath filesep eigenvectorsPlotsFolder],'dir')
+    mkdir([workpath filesep eigenvectorsPlotsFolder]);
+end
+if any(strcmp(plots),'eigenVectors') && ~exist([workpath filesep circlePlotsFolder],'dir')
+    mkdir([workpath filesep circlePlotsFolder]);
+end
+
+if saveVariables && ~exist([workpath filesep variablesPlotsFolder],'dir')
+    mkdir([workpath filesep variablesPlotsFolder]);
+end
 
 if isempty(data)
     tic;
@@ -53,15 +74,15 @@ if isempty(data)
 end
 
 % Loading data and setting up some useful variables
-% Loaded variables are (as in Dec 4th 2014):
-%   gridpos           192x1              14984  cell   (unused)             
-%   positions         192x1             163584  cell                
-%   sensor_count        1x1                  8  double              
-%   sensors           192x1              13824  cell 
 if isempty(northing) || isempty(easting)
     tic;
     fprintf('Loading sensor locations file...\n');    
     load('location of sensors.mat');
+    % Loaded variables are (as in Dec 4th 2014):
+    %   sensor_count        1x1                     8  double              
+    %   gridpos           sensor_countx1        14984  cell   (unused)             
+    %   positions         sensor_countx1       163584  cell                
+    %   sensors           sensor_countx1        13824  cell 
     fprintf('Loaded in %.1f seconds.\n',toc);
     sensor_count = length(fieldnames(data));
     northing = nan(sensor_count,1); easting = nan(sensor_count,1);
@@ -76,13 +97,37 @@ if isempty(northing) || isempty(easting)
     end    
 end
 
-load([workpath cov_data]);
-[V,D] = eig(cov_clean); % D is a diagonal matrix of e/values and V is a matrix  
+if isstruct(cov_data)
+    covariance=cov_data.cov;
+    startTime=cov_data.timeLims(1);
+    endTime=cov_data.timeLims(2);
+    sensorIDs=cov_data.sensors;
+elseif exist([workpath cov_data],'file') || exist(cov_data,'file')
+    if exist([workpath cov_data],'file')
+        load([workpath cov_data]);
+    elseif  exist(cov_data,'file')
+        load(cov_data);
+    end
+    % In old kevin's files and new ones variables have different names
+    % so we make some changes if needed
+    if exist('cov_clean','var')
+        covariance=cov_clean;
+    end
+    if exist('sensors_clean','var')
+        sensorIDs=sensors_clean;
+    end   
+    startTime=datenum(end_time);
+    endTime=datenum(start_time);
+else
+    error('ANIMATE_COVARIANCES:Can_not_load_covariance_data','Can''t load covariance data.');
+end
+
+[V,D] = eig(covariance); % D is a diagonal matrix of e/values and V is a matrix  
                         % whose columns are the corresponding eigenvectors
 D2 = diag(D); % D2 is a column vector of e/values
 
 % Getting the e/values (eigval2) and e/vectors (V2) that satisfies the lambda test
-lambdabar = sum(D2)/length(sensors_clean);
+lambdabar = sum(D2)/length(sensorIDs);
 ind = D2>lambdabar;
 eigval = D2(ind); V2 = V(:,ind); % eigval is a column vector containing the 
                                  % eigenvalues
@@ -95,11 +140,10 @@ eigvec_mat = V2./repmat(max(abs(V2),[],1),m,1); % eigvec_mat is a matrix whose
 % Setting up some useful variables for the ampltiude time series
 dt = 2/60/24;
 % A_mat is a matrix whose columns are going to be the amplitude series
-m2 = length(datenum(start_time):dt:datenum(end_time));
+m2 = length(startTime:dt:endTime);
 A_mat = zeros(m2,n); 
 
-startTime=datenum(start_time);
-endTime=datenum(end_time);
+
 
 % Plotting
 % Looping through the eigenvectors
@@ -118,8 +162,8 @@ for jj=1:n;
         figHandle=figure('Visible', showFigures);
         plot(eigvec,'bx--');
         xlabel('Component'); ylabel('Magnitude'); 
-        filename = [num2str(yr) '_' num2str(wk) '_Eigvec ' num2str(jj)];
-        title(['Eigenvector ' num2str(jj) ' (' num2str(yr) '-' num2str(wk) ' ' datestr(startTime,'mmm-dd')  ' to ' datestr(endTime,'mmm-dd') ')'],'Color','w');
+        filename = [datestr(startTime,'yyyy-mm-dd') '_to_' datestr(startTime,'mm-dd') '_Eigvec ' num2str(jj)];
+        title(['Eigenvector ' num2str(jj) ' (' datestr(startTime,'yyyy-mmm-dd')  ' to ' datestr(endTime,'mmm-dd') ')'],'Color','w');
         saveas(gcf, [workpath 'Plots/' filename], 'png');
         delete(figHandle);
     end 
@@ -137,25 +181,25 @@ for jj=1:n;
         hold on
         % Plotting the position of the sensors
         plot((easting-min(easting)),(northing-min(northing)),'kx','MarkerSize',4);
-        title(['Map ' num2str(jj) ' (' num2str(yr) '-' num2str(wk) ', ' datestr(startTime,'mmm-dd')  ' to ' datestr(endTime,'mmm-dd') ')'],'Color',[.99 .99 .99],'FontSize',15);
+        title(['Map ' num2str(jj) ' (' datestr(startTime,'yyyy-mmm-dd')  ' to ' datestr(endTime,'mmm-dd') ')'],'Color',[.99 .99 .99],'FontSize',15);
         xlim([0 max(easting)-min(easting)]);
         ylim([0 max(northing)-min(northing)]);
         
     end
     for kk=1:m;
         % Assigning data as inputs for extract_v4
-        t_in = data.(sensors_clean{kk}).time.serialtime;
-        p_in = data.(sensors_clean{kk}).pressure;
+        t_in = data.(sensorIDs{kk}).time.serialtime;
+        p_in = data.(sensorIDs{kk}).pressure;
         p_in = p_in{1};
         tlim = [min(t_in) max(t_in)];
-        if datenum(start_time)<tlim(1) || datenum(end_time)>tlim(2);
+        if startTime<tlim(1) || endTime>tlim(2);
             % Making all the entries in p_out zero if datenum(start_time)<tlim(1) or 
             % datenum(end_time)>tlim(2)
-            t_out = (datenum(start_time):dt:datenum(end_time)).';
+            t_out = (startTime:dt:endTime)';
             p_out = zeros(length(t_out),1);
         else
             % Calling extract_v6
-            [p_out, t_out] = extract_v6(datenum(start_time), datenum(end_time),t_in, p_in, norm, dt);
+            [p_out, t_out] = extract_v6(startTime, endTime,t_in, p_in, norm, dt);
             if any(isnan(p_out));
                 p_out = zeros(length(t_out),1);
             end
@@ -167,8 +211,8 @@ for jj=1:n;
             % Plotting the pressure series belonging to the biggest eigenvector component
             if eigvec(kk)==max(eigvec);
                 % Setting up variables for patch
-                x1 = datenum(start_time);
-                x2 = datenum(end_time);
+                x1 = startTime;
+                x2 = endTime;
                 y1 = min(p_in);
                 y2 = max(p_in);
 
@@ -182,7 +226,7 @@ for jj=1:n;
                 decimationFac=round(length(t_in)/300);
                 decimatedIndexes=1:decimationFac:length(t_in);
                 plot(t_in(decimatedIndexes), p_in(decimatedIndexes)/(1000*9.8),'b.','MarkerSize',3);
-                title(['Press. ' sensors_clean{kk}],'Color',[.99 .99 .99],'FontSize',15);
+                title(['Press. ' sensorIDs{kk}],'Color',[.99 .99 .99],'FontSize',15);
                 datetick('x','yyyy');
                 
                 subplot(3,5,[9 10]);
@@ -191,7 +235,7 @@ for jj=1:n;
                 % Plotting the data inside the window at full resolution
                 hold on
                 box on
-                inWindow= t_in>=datenum(start_time) & t_in<=datenum(end_time);
+                inWindow= t_in>=startTime & t_in<=endTime;
                 plot(t_in(inWindow), p_in(inWindow)/(1000*9.8),'b.','MarkerSize',3);
                 title('Window press.','Color',[.99 .99 .99],'FontSize',10);
                 datetick('x','mm-dd');
@@ -201,7 +245,7 @@ for jj=1:n;
             % Creating red/blue transparent circles
             subplot(3,5,[1:3 6:8 11:13]);
             hold on
-            ind2 = strcmp(sensors_clean{kk},sensors);
+            ind2 = strcmp(sensorIDs{kk},sensors);
             if eigvec(kk)>=0;
                 c = 'r';
             else
@@ -237,24 +281,28 @@ for jj=1:n;
         datetick('x','mm-dd');
         
         % Saving the plot
-        filename = [num2str(yr) '_' num2str(wk) '_Map ' num2str(jj)];
+        filename = [datestr(startTime,'yyyy-mm-dd')  '_to_' datestr(endTime,'mm-dd') '_Map ' num2str(jj)];
         disp(filename);
         
-        saveas(gcf, [workpath 'Plots/' filename], 'png');
-        %print(gcf,'-dpng','-r600',[workpath 'Plots/' filename '.png'])
-        if strcmp(showFigures,'on')
-            input('Continue?')
-            pause(3);
-        end
+        saveas(gcf, [workpath filesep 'Plots' filesep filename], 'png');
+
+%         if strcmp(showFigures,'on')
+%             input('Continue?')
+%             pause(3);
+%         end
         delete(figHandle);
     end
 end
 
 
-% Saving the variables
-filename = ['E_val, e_vec, amp and time' ' (' cov_data(1:end-4) ')'];
-save([workpath 'Eig and amp/' filename], 'eigval', 'eigvec_mat', 'A_mat','start_time', 'end_time');
+if saveVariables
+    % Saving the variables
+    filename = ['E_val, e_vec, amp and time' datestr(startTime,'yyyy-mm-dd')  '_to_' datestr(endTime,'mm-dd')];
+    if ~exist([workpath filesep 'Eig and amp'],'dir')
+        mkdir([workpath filesep 'Eig and amp']);
+    end
+    save([workpath filesep 'Eig and amp' filesep filename], 'eigval', 'eigvec_mat', 'A_mat','start_time', 'end_time');
+end
 
 close ALL
-results = 'See saved plots';
 end

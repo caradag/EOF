@@ -1,4 +1,5 @@
-clear all;clc;clf
+clear all;
+clc;
 
 aviobj=avifile('dancing_circles_full_frame.avi','fps',7,'compression','none');
 
@@ -14,18 +15,20 @@ windowOffsets=5; % Number of offset in the window for example:
                  %      3 => 15 days window with 5 day time steps
 normData = false; % true to process normalized data, false for unnormalized
 
+basePath='/media/VERBATIM HD/';
+
 % Looping through the years
 for year=yearstart:yearend
     % Looping through the 'weeks'
     fprintf('Year %d\n',year);
     for week=startWeek:endWeek
-        fprintf('   Window %d out of %d\n',week,numberOfWeeks);
+        fprintf('   Window %d out of %d\n',week,endWeek-startWeek+1);
         %looping trough folders identified by Day Of Window number
         for dow=1:windowOffsets
             if normData
-                folderName=sprintf('Results/Normalized press, %d days int, 2008 to 2014 (%d)/',windowLength,dow);
+                folderName=sprintf('%sResults/Normalized press, %d days int, 2008 to 2014 (%d)/',basePath,windowLength,dow);
             else
-                folderName=sprintf('Results/Unnormalized press, %d days int, 2008 to 2014 (%d)/',windowLength,dow);
+                folderName=sprintf('%sResults/Unnormalized press, %d days int, 2008 to 2014 (%d)/',basePath,windowLength,dow);
             end
             filename=sprintf('%d_%d_Map 1.png',year,week);
             fileFullPathName=[folderName 'Plots/' filename];
