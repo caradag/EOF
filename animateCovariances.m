@@ -105,7 +105,7 @@ rangeE=linspace(minE,maxE,imageW);
 rangeN=linspace(minN,maxN,imageH);
 [E N]=meshgrid(rangeE,rangeN);
 
-for i=1:nWindows
+for i=1844%1:nWindows
     messageLength=fprintf('%06.2f%% %d/%d',100*pairCount/nVals,i,nWindows);
     if ~ishandle(mapFigure)
         break;
@@ -139,7 +139,7 @@ for i=1:nWindows
         p1=metadata.(sensorID1).pos;
         p2=metadata.(sensorID2).pos;
 
-        if cov<covThreshold
+        if cov<covThreshold || isnan(cov)
             pInactive=[pInactive;p1;p2];
             continue
         end
@@ -153,7 +153,7 @@ for i=1:nWindows
         [~,p2Col]=min(abs(rangeE-p2(1)));
         [~,p2Row]=min(abs(rangeN-p2(2)));
         
-        semiAxisMinor=interp1(semiAxisScale(:,1),semiAxisScale(:,2),pp)
+        semiAxisMinor=interp1(semiAxisScale(:,1),semiAxisScale(:,2),pp);
         
         maxWidth=ceil((pp*semiAxisMinor)/((maxE-minE)/imageW));
         margin=max(maxWidth,dotRadius);
@@ -210,7 +210,20 @@ for i=1:nWindows
                 letters(j+1)=sensorLetter(idx);
                 text(x-9,y+7,char(letters(j+1)),'FontSize',10);
             end
-            text(minE-100+mod(floor((p-1)/3),3)*500,minN-30-mod(p-1,3)*50,sprintf('#%d (%c) %s and (%c)%s',p,letters(1),covStack(i).sensors{cols(pActive(p,5))}(2:end),letters(2),covStack(i).sensors{rows(pActive(p,5))}(2:end)));
+%            text(minE-100+mod(floor((p-1)/3),3)*500,minN-30-mod(p-1,3)*50,sprintf('#%d (%c) %s and (%c)%s',p,letters(1),covStack(i).sensors{cols(pActive(p,5))}(2:end),letters(2),covStack(i).sensors{rows(pActive(p,5))}(2:end)));
+            ranges=covStack(i).range(pActive(p,[7,8]),:);
+            ranges=diff(ranges,1,2)/9800; %Pressure range in meters
+            rangeTxT={'',''};
+            for j=1:2
+                if round(ranges(j)) < 1
+                    rangeTxT{j}=sprintf('.%d',round(ranges(j)*10));
+                elseif round(ranges(j)) < 100
+                    rangeTxT{j}=sprintf('%.0f',round(ranges(j)));
+                else
+                    rangeTxT{j}='++';
+                end
+            end
+            text(minE-130+mod(floor((p-1)/3),3)*530,minN-30-mod(p-1,3)*50,sprintf('#%d %c: %s(%s) & %c: %s(%s)',p,letters(1),covStack(i).sensors{cols(pActive(p,5))}(2:end),rangeTxT{1},letters(2),covStack(i).sensors{rows(pActive(p,5))}(2:end),rangeTxT{2}));
         end
     end    
     title(sprintf('#%d: %s, %s to %s (max. cov. %.2f, plotted pairs %d/%d)',i,datestr(covStack(i).timeLims(1),'yyyy'),datestr(covStack(i).timeLims(1),'mmm-dd'),datestr(covStack(i).timeLims(2),'mmm-dd'),maxFrameCov,plottedPairs,nPairs));

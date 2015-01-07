@@ -210,7 +210,7 @@ function covStack = getCovMatrices(windowSize, timeStep, doNormalize, doDetrend,
             press_mat = detrend(press_mat);
         end
         % Computing covarianve        
-        covariance=computeCov(press_mat, doNormalize);
+        [covariance stdDev ranges]=computeCov(press_mat, doNormalize);
 
         descriptionTxt='';
         if doNormalize
@@ -226,10 +226,12 @@ function covStack = getCovMatrices(windowSize, timeStep, doNormalize, doDetrend,
             start_time = datevec(tstart);
             end_time = datevec(tfinal);
             filename=sprintf('cov_%s_%04d-%02d-%02d_%dDays%s.mat',options.datatype,start_time,windowSize,descriptionTxt);
-            save([options.folder filesep filename ],'covariance','press_mean','sensorIDs','loggers','start_time','end_time','windowCount');
+            save([options.folder filesep filename ],'covariance','press_mean','sensorIDs','loggers','start_time','end_time','windowCount','stdDev','ranges');
         end
         if nargout>0
             covStack(end+1).cov=covariance;
+            covStack(end).std=stdDev;           
+            covStack(end).range=ranges;           
             covStack(end).timeLims=[tstart tfinal];                    
             covStack(end).sensors=sensorIDs;                    
             covStack(end).loggers=loggers;                    
@@ -241,14 +243,18 @@ function covStack = getCovMatrices(windowSize, timeStep, doNormalize, doDetrend,
     fprintf('Done in %.1 minutes',toc/60);
 end
 
-function covariance=computeCov(x,normalize)
+function [covariance stdDev ranges]=computeCov(x,normalize)
     % Get the number of samples in the time serie in m
     m = size(x,1);
     % Remove the mean of each colum
     x = bsxfun(@minus,x,sum(x,1)/m);
     % Computing unnormalized covariance
     unnormCov = x' * x;
-
+    % diag(unnormCov)/(m-1) are the variances
+    % Therefore, the standar deviations are:
+    stdDev=sqrt(diag(unnormCov)/(m-1));
+    % Computing minimum and maximum of all dataseries
+    ranges=[min(x);max(x)]';
     if normalize
         % This is equivalent to normalize each time series before
         % by dividing it by the square root of the variance
